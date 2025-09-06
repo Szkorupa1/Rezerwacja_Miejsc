@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AdminPanelScreen extends StatelessWidget {
   const AdminPanelScreen({super.key});
@@ -17,8 +18,17 @@ class AdminPanelScreen extends StatelessWidget {
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
               label: const Text('Dodaj nowy spektakl'),
-              onPressed: () {
-                context.go('/admin/add-show');
+              onPressed: () async {
+
+                final added = await context.push<bool>('/admin/add-show');
+
+
+                if (added == true) {
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Spektakl został dodany!')),
+                  );
+                }
               },
             ),
             const SizedBox(height: 16),
@@ -31,12 +41,27 @@ class AdminPanelScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
+              icon: const Icon(Icons.list),
+              label: const Text('Lista spektakli (Admin)'),
+              onPressed: () {
+                context.go('/admin/spectacle-list');
+              },
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
               icon: const Icon(Icons.logout),
               label: const Text('Wyloguj'),
-              onPressed: () {
-
-
-
+              onPressed: () async {
+                try {
+                  await Supabase.instance.client.auth.signOut();
+                  if (context.mounted) {
+                    context.go('/auth');
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Błąd wylogowania: $e')),
+                  );
+                }
               },
             ),
           ],

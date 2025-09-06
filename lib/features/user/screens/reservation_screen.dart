@@ -22,30 +22,54 @@ class _ReservationScreenState extends State<ReservationScreen> {
   bool isSceneView = true;
 
   Set<String> reservedSeats = {};
+  Set<String> pendingSeats = {};
   Set<String> selectedSeats = {};
 
   @override
   void initState() {
     super.initState();
-    loadReservedSeats();
+    loadSeats();
   }
 
-  Future<void> loadReservedSeats() async {
-    final data = await supabase
+  Future<void> loadSeats() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+
+    final confirmed = await supabase
         .from('reservations')
         .select('seats')
         .eq('spectacle_id', widget.spectacle['id'])
         .eq('status', 'confirmed');
 
-    final Set<String> loaded = {};
+    final Set<String> loadedReserved = {};
+    for (final r in confirmed) {
+      loadedReserved.addAll((r['seats'] as List).cast<String>());
+    }
 
-    for (final r in data) {
-      final List<dynamic> seats = r['seats'];
-      loaded.addAll(seats.cast<String>());
+
+    final pending = await supabase
+        .from('reservations')
+        .select('seats, user_id')
+        .eq('spectacle_id', widget.spectacle['id'])
+        .eq('status', 'pending');
+
+    final Set<String> loadedPending = {};
+    final userPendingSeats = <String>{};
+
+    for (final r in pending) {
+      final seats = (r['seats'] as List).cast<String>();
+      loadedPending.addAll(seats);
+      if (r['user_id'] == user.id) {
+        userPendingSeats.addAll(seats);
+      }
     }
 
     setState(() {
-      reservedSeats = loaded;
+      reservedSeats = loadedReserved;
+      pendingSeats = loadedPending;
+
+      selectedSeats.removeWhere((s) => userPendingSeats.contains(s));
     });
   }
 
@@ -53,10 +77,20 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
+
+    final newSeats = selectedSeats.where((s) => !pendingSeats.contains(s)).toList();
+
+    if (newSeats.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wybrane miejsca są już w rezerwacji oczekującej')),
+      );
+      return;
+    }
+
     final insert = {
       'user_id': user.id,
       'spectacle_id': widget.spectacle['id'],
-      'seats': selectedSeats.toList(),
+      'seats': newSeats,
       'status': 'pending',
       'confirmed_at': null,
     };
@@ -70,6 +104,8 @@ class _ReservationScreenState extends State<ReservationScreen> {
     setState(() {
       selectedSeats.clear();
     });
+
+    await loadSeats();
   }
 
   @override
@@ -98,7 +134,10 @@ class _ReservationScreenState extends State<ReservationScreen> {
       body: Column(
         children: [
           const SizedBox(height: 16),
-          Text('Wybierz miejsca:', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            'Wybierz miejsca:',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 16),
           Expanded(
             child: GridView.builder(
@@ -113,13 +152,26 @@ class _ReservationScreenState extends State<ReservationScreen> {
               itemBuilder: (context, index) {
                 final row = index ~/ seatsPerRow + 1;
                 final seat = index % seatsPerRow + 1;
-                final seatId = 'R$row-S$seat';
+
+                final seatId = isSceneView ? 'R$row-S$seat' : 'B$row-S$seat';
 
                 final isReserved = reservedSeats.contains(seatId);
+                final isPending = pendingSeats.contains(seatId);
                 final isSelected = selectedSeats.contains(seatId);
 
+                Color seatColor;
+                if (isReserved) {
+                  seatColor = Colors.red; // Zajęte
+                } else if (isPending) {
+                  seatColor = Colors.yellow; // Czekające na potwierdzenie
+                } else if (isSelected) {
+                  seatColor = Colors.green; // Wybrane przez użytkownika
+                } else {
+                  seatColor = Colors.grey[300]!; // Wolne
+                }
+
                 return GestureDetector(
-                  onTap: isReserved
+                  onTap: (isReserved || isPending)
                       ? null
                       : () {
                     setState(() {
@@ -133,11 +185,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
                   child: Container(
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: isReserved
-                          ? Colors.red
-                          : isSelected
-                          ? Colors.green
-                          : Colors.grey[300],
+                      color: seatColor,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(seatId),

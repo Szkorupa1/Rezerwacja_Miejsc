@@ -33,7 +33,7 @@ class _UserReservationsScreenState extends State<UserReservationsScreen> {
 
 
 
-    setState(() {}); // odśwież listę
+    setState(() {});
   }
 
   @override

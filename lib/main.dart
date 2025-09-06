@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:rezerwacja_miejsc/features/admin/screens/admin_spectacle_list_screen.dart';
+import 'package:rezerwacja_miejsc/features/user/screens/reset_password_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:rezerwacja_miejsc/features/admin/screens/Admin_Reservation_List_Screen.dart';
@@ -28,9 +30,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final GoRouter router = GoRouter(
+      initialLocation: '/splash',
       routes: [
         GoRoute(
-          path: '/',
+          path: '/splash',
+          builder: (context, state) => const SplashScreen(),
+        ),
+        GoRoute(
+          path: '/auth',
           builder: (context, state) => const AuthScreen(),
         ),
         GoRoute(
@@ -46,8 +53,16 @@ class MyApp extends StatelessWidget {
           builder: (context, state) => const AdminReservationListScreen(),
         ),
         GoRoute(
+          path: '/admin/spectacle-list',
+          builder: (context, state) => const AdminSpectacleListScreen(),
+        ),
+        GoRoute(
           path: '/admin/add-show',
           builder: (context, state) => const AddShowScreen(),
+        ),
+        GoRoute(
+          path: '/user/reset-password',
+          builder: (context, state) => const ResetPasswordScreen(),
         ),
         GoRoute(
           path: '/user/reservation_screen.dart',
@@ -69,3 +84,73 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  final supabase = Supabase.instance.client;
+
+  @override
+  void initState() {
+    super.initState();
+
+
+    final session = supabase.auth.currentSession;
+    if (session != null) {
+      _redirectBasedOnRole(session.user.id);
+    } else {
+
+      supabase.auth.onAuthStateChange.listen((data) {
+        final event = data.event;
+        final session = data.session;
+
+        if (session != null && (event == AuthChangeEvent.signedIn || event == AuthChangeEvent.initialSession)) {
+          _redirectBasedOnRole(session.user.id);
+        } else if (event == AuthChangeEvent.signedOut) {
+          context.go('/auth');
+        }
+      });
+
+
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && supabase.auth.currentSession == null) {
+          context.go('/auth');
+        }
+      });
+    }
+  }
+
+  Future<void> _redirectBasedOnRole(String userId) async {
+    final role = await _getUserRole(userId);
+    if (!mounted) return;
+
+    if (role == 'admin') {
+      context.go('/admin');
+    } else {
+      context.go('/user_home');
+    }
+  }
+
+  Future<String?> _getUserRole(String userId) async {
+    final data = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle();
+    return data?['role'] as String?;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+
